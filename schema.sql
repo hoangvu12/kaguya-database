@@ -1406,7 +1406,7 @@ create or replace function public.handle_new_user()
 returns trigger as $$
 begin
   insert into public.users (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role)
-  values (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role) on conflict (id) do update set (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role) = (excluded.id, excluded.email, excluded.created_at, excluded.updated_at, excluded.raw_user_meta_data, excluded.raw_app_meta_data, excluded.aud, excluded.role);
+  values (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role) on conflict (id) do update set (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role) = (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role);
   return new;
 end;
 $$ language plpgsql security definer;
