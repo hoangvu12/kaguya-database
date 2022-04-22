@@ -1411,6 +1411,62 @@ begin
 end;
 $$ language plpgsql security definer;
 
+ALTER TABLE kaguya_episodes
+DROP CONSTRAINT "kaguya_episodes_sourceConnectionId_fkey",
+ADD CONSTRAINT "kaguya_episodes_sourceConnectionId_fkey"
+   FOREIGN KEY ("sourceConnectionId")
+   REFERENCES kaguya_anime_source(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_chapters
+DROP CONSTRAINT "kaguya_chapters_sourceConnectionId_fkey",
+ADD CONSTRAINT "kaguya_chapters_sourceConnectionId_fkey"
+   FOREIGN KEY ("sourceConnectionId")
+   REFERENCES kaguya_manga_source(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_episodes
+DROP CONSTRAINT "kaguya_episodes_sourceId_fkey",
+ADD CONSTRAINT "kaguya_episodes_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_chapters
+DROP CONSTRAINT "kaguya_chapters_sourceId_fkey",
+ADD CONSTRAINT "kaguya_chapters_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_anime_source
+DROP CONSTRAINT "kaguya_anime_source_sourceId_fkey",
+ADD CONSTRAINT "kaguya_anime_source_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_manga_source
+DROP CONSTRAINT "kaguya_manga_source_sourceId_fkey",
+ADD CONSTRAINT "kaguya_manga_source_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_watched
+DROP CONSTRAINT "kaguya_watched_episodeId_fkey",
+ADD CONSTRAINT "kaguya_watched_episodeId_fkey"
+   FOREIGN KEY ("episodeId")
+   REFERENCES kaguya_episodes(slug)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_read
+DROP CONSTRAINT "kaguya_read_chapterId_fkey",
+ADD CONSTRAINT "kaguya_read_chapterId_fkey"
+   FOREIGN KEY ("chapterId")
+   REFERENCES kaguya_chapters(slug)
+   ON DELETE CASCADE;
+
 --
 -- Name: users on_auth_user_created; Type: TRIGGER; Schema: auth; Owner: supabase_auth_admin
 --
