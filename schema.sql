@@ -43,8 +43,7 @@ CREATE TABLE public.kaguya_anime (
     "totalEpisodes" smallint,
     tags character varying[],
     "episodeUpdatedAt" timestamp without time zone DEFAULT now(),
-    description text,
-    "vietnameseTitle" character varying,
+    description json,
     "isAdult" boolean,
     synonyms text[],
     "countryOfOrigin" character varying,
@@ -128,7 +127,7 @@ CREATE FUNCTION public.anime_search(string text) RETURNS SETOF public.kaguya_ani
 
   begin
 
-  return query select * from kaguya_anime where to_tsvector(title || ' ' || coalesce("vietnameseTitle", '') || ' ' || coalesce(arr2text(synonyms), '') || ' ' || coalesce(description, '')) @@ plainto_tsquery(string);
+  return query select * from kaguya_anime where to_tsvector(title || ' ' || coalesce(arr2text(synonyms), '') || ' ' || coalesce(description, '')) @@ plainto_tsquery(string);
 
   end
 
@@ -293,8 +292,7 @@ CREATE TABLE public.kaguya_manga (
     "averageScore" smallint,
     "countryOfOrigin" character varying,
     genres character varying[],
-    description text,
-    "vietnameseTitle" character varying,
+    description json,
     synonyms character varying[],
     "chapterUpdatedAt" timestamp with time zone DEFAULT now(),
     "totalChapters" integer
@@ -374,7 +372,7 @@ CREATE FUNCTION public.manga_search(string text) RETURNS SETOF public.kaguya_man
 
   begin
 
-  return query select * from kaguya_manga where to_tsvector(title || ' ' || coalesce("vietnameseTitle", '') || ' ' || coalesce(arr2text(synonyms), '') || ' ' || coalesce(description, '')) @@ plainto_tsquery(string);
+  return query select * from kaguya_manga where to_tsvector(title || ' ' || coalesce(arr2text(synonyms), '') || ' ' || coalesce(description, '')) @@ plainto_tsquery(string);
 
   end
 
@@ -472,76 +470,6 @@ CREATE FUNCTION public.new_manga_relations_upsert_filter() RETURNS trigger
 
 END;$$;
 
-
---
--- Name: novel_character_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.novel_character_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF NOT EXISTS(SELECT 1 FROM novel_characters WHERE novel_id = NEW.novel_id AND name = NEW.name)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
---
--- Name: novel_recommendations_upsert_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.novel_recommendations_upsert_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF EXISTS(SELECT 1 FROM novel WHERE ani_id = NEW.recommend_id)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
---
--- Name: novel_relations_upsert_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.novel_relations_upsert_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF EXISTS(SELECT 1 FROM novel WHERE ani_id = NEW.relation_id)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
 --
 -- Name: update_anime_episodes(); Type: FUNCTION; Schema: public; Owner: supabase_admin
 --
@@ -635,29 +563,6 @@ $$;
 
 
 --
--- Name: upsert_anime(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.upsert_anime() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-
-  BEGIN
-
-    NEW."vietnameseTitle" = OLD."vietnameseTitle";
-
-    NEW.description = OLD.description;
-
-    
-
-    RETURN NEW;
-
-  END;
-
-$$;
-
-
---
 -- Name: upsert_data(); Type: FUNCTION; Schema: public; Owner: supabase_admin
 --
 
@@ -667,21 +572,21 @@ CREATE FUNCTION public.upsert_data() RETURNS trigger
 
   BEGIN
 
-    IF (OLD."vietnameseTitle" IS NOT NULL)
+    IF ((OLD.title::JSONB->>'vietnamese') IS NOT NULL AND (OLD.title::JSONB->>'vietnamese') != '')
 
     THEN
 
-      NEW."vietnameseTitle" = OLD."vietnameseTitle";
+      NEW.title = OLD.title::JSONB || NEW.title::JSONB;
 
     END IF;
 
 
 
-    IF (OLD.description IS NOT NULL)
+    IF ((OLD.description::JSONB->>'vietnamese') IS NOT NULL AND (OLD.description::JSONB->>'vietnamese') != '')
 
     THEN
 
-      NEW.description = OLD.description;
+       NEW.description = OLD.description::JSONB || NEW.description::JSONB;
 
     END IF;
 
@@ -1410,6 +1315,79 @@ begin
   return new;
 end;
 $$ language plpgsql security definer;
+
+
+ALTER TABLE kaguya_episodes
+DROP CONSTRAINT "kaguya_episodes_sourceConnectionId_fkey",
+ADD CONSTRAINT "kaguya_episodes_sourceConnectionId_fkey"
+   FOREIGN KEY ("sourceConnectionId")
+   REFERENCES kaguya_anime_source(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_chapters
+DROP CONSTRAINT "kaguya_chapters_sourceConnectionId_fkey",
+ADD CONSTRAINT "kaguya_chapters_sourceConnectionId_fkey"
+   FOREIGN KEY ("sourceConnectionId")
+   REFERENCES kaguya_manga_source(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_episodes
+DROP CONSTRAINT "kaguya_episodes_sourceId_fkey",
+ADD CONSTRAINT "kaguya_episodes_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_chapters
+DROP CONSTRAINT "kaguya_chapters_sourceId_fkey",
+ADD CONSTRAINT "kaguya_chapters_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_anime_source
+DROP CONSTRAINT "kaguya_anime_source_sourceId_fkey",
+ADD CONSTRAINT "kaguya_anime_source_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_manga_source
+DROP CONSTRAINT "kaguya_manga_source_sourceId_fkey",
+ADD CONSTRAINT "kaguya_manga_source_sourceId_fkey"
+   FOREIGN KEY ("sourceId")
+   REFERENCES kaguya_sources(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_watched
+DROP CONSTRAINT "kaguya_watched_episodeId_fkey",
+ADD CONSTRAINT "kaguya_watched_episodeId_fkey"
+   FOREIGN KEY ("episodeId")
+   REFERENCES kaguya_episodes(slug)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_read
+DROP CONSTRAINT "kaguya_read_chapterId_fkey",
+ADD CONSTRAINT "kaguya_read_chapterId_fkey"
+   FOREIGN KEY ("chapterId")
+   REFERENCES kaguya_chapters(slug)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_watch_status
+DROP CONSTRAINT "kaguya_watch_status_mediaId_fkey",
+ADD CONSTRAINT "kaguya_watch_status_mediaId_fkey"
+   FOREIGN KEY ("mediaId")
+   REFERENCES kaguya_anime(id)
+   ON DELETE CASCADE;
+
+ALTER TABLE kaguya_read_status
+DROP CONSTRAINT "kaguya_read_status_mediaId_fkey",
+ADD CONSTRAINT "kaguya_read_status_mediaId_fkey"
+   FOREIGN KEY ("mediaId")
+   REFERENCES kaguya_manga(id)
+   ON DELETE CASCADE;
+
+
 
 --
 -- Name: users on_auth_user_created; Type: TRIGGER; Schema: auth; Owner: supabase_auth_admin
