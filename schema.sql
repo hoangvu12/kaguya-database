@@ -2593,6 +2593,8 @@ CREATE POLICY "Enable access to all users" ON public.users FOR SELECT USING (tru
 
 CREATE POLICY "Enable delete for users based on user_id" ON public.comments FOR DELETE USING ((auth.uid() = user_id));
 
+CREATE POLICY "Enable delete for users based on user_id" ON public.comment_reactions FOR DELETE USING ((auth.uid() = user_id));
+
 
 --
 -- Name: kaguya_anime_subscribers Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
@@ -2627,6 +2629,12 @@ CREATE POLICY "Enable delete for users based on user_id" ON public.subscriptions
 --
 
 CREATE POLICY "Enable insert for authenticated users only" ON public.comments FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_watched FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_read FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.comment_reactions FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
 
 
 --
@@ -2703,22 +2711,28 @@ CREATE POLICY "Enable update access for users based on their user ID" ON public.
 -- Name: kaguya_anime_subscribers Enable update for users based on email; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable update for users based on email" ON public.kaguya_anime_subscribers FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+CREATE POLICY "Enable update for users based userId" ON public.kaguya_anime_subscribers FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+CREATE POLICY "Enable update for users based userId" ON public.comment_reactions FOR UPDATE USING ((auth.uid() = user_id)) WITH CHECK ((auth.uid() = user_id));
 
 
 --
 -- Name: kaguya_manga_subscribers Enable update for users based on email; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable update for users based on email" ON public.kaguya_manga_subscribers FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+CREATE POLICY "Enable update for users based userId" ON public.kaguya_manga_subscribers FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
 
 
 --
 -- Name: kaguya_subscriptions Enable update for users based on email; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable update for users based on email" ON public.kaguya_subscriptions FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+CREATE POLICY "Enable update for users based userId" ON public.kaguya_subscriptions FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
 
+
+CREATE POLICY "Enable update for users based on id" ON public.kaguya_read FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+CREATE POLICY "Enable update for users based on id" ON public.kaguya_watched FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
 
 --
 -- Name: kaguya_read_status Enable update for users based on id; Type: POLICY; Schema: public; Owner: supabase_admin
