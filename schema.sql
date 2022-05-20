@@ -775,9 +775,6 @@ END;$$;
 
 ALTER FUNCTION public.new_manga_relations_upsert_filter() OWNER TO supabase_admin;
 
-
-ALTER FUNCTION public.pgrst_watch() OWNER TO supabase_admin;
-
 --
 -- Name: update_anime_episodes(); Type: FUNCTION; Schema: public; Owner: supabase_admin
 --
@@ -3488,16 +3485,6 @@ GRANT ALL ON FUNCTION public.new_manga_relations_upsert_filter() TO postgres;
 GRANT ALL ON FUNCTION public.new_manga_relations_upsert_filter() TO anon;
 GRANT ALL ON FUNCTION public.new_manga_relations_upsert_filter() TO authenticated;
 GRANT ALL ON FUNCTION public.new_manga_relations_upsert_filter() TO service_role;
-
-
---
--- Name: FUNCTION pgrst_watch(); Type: ACL; Schema: public; Owner: supabase_admin
---
-
-GRANT ALL ON FUNCTION public.pgrst_watch() TO postgres;
-GRANT ALL ON FUNCTION public.pgrst_watch() TO anon;
-GRANT ALL ON FUNCTION public.pgrst_watch() TO authenticated;
-GRANT ALL ON FUNCTION public.pgrst_watch() TO service_role;
 
 
 --
