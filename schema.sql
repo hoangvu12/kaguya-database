@@ -17,97 +17,6 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: public; Type: SCHEMA; Schema: -; Owner: postgres
---
-
-CREATE SCHEMA public;
-
-
-ALTER SCHEMA public OWNER TO postgres;
-
---
--- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: postgres
---
-
-COMMENT ON SCHEMA public IS 'standard public schema';
-
-
---
--- Name: airing_schedule_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.airing_schedule_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF NOT EXISTS(SELECT 1 FROM airing_schedule WHERE anime_id = NEW.anime_id AND episode = NEW.episode)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
-ALTER FUNCTION public.airing_schedule_filter() OWNER TO supabase_admin;
-
---
--- Name: anime_recommendations_upsert_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.anime_recommendations_upsert_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF EXISTS(SELECT 1 FROM anime WHERE ani_id = NEW.recommend_id)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
-ALTER FUNCTION public.anime_recommendations_upsert_filter() OWNER TO supabase_admin;
-
---
--- Name: anime_relations_upsert_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.anime_relations_upsert_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF EXISTS(SELECT 1 FROM anime WHERE ani_id = NEW.relation_id)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
-ALTER FUNCTION public.anime_relations_upsert_filter() OWNER TO supabase_admin;
-
---
 -- Name: arr2text(text[]); Type: FUNCTION; Schema: public; Owner: supabase_admin
 --
 
@@ -117,81 +26,6 @@ CREATE FUNCTION public.arr2text(ci text[]) RETURNS text
 
 
 ALTER FUNCTION public.arr2text(ci text[]) OWNER TO supabase_admin;
-
---
--- Name: both_search(text); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.both_search(string text) RETURNS TABLE(title text, description text)
-    LANGUAGE plpgsql
-    AS $$
-
-  begin
-
-  return query select title, description from manga union all select title, description from anime where to_tsvector(title || ' ' || description) @@ plainto_tsquery(string);
-
-  end
-
-$$;
-
-
-ALTER FUNCTION public.both_search(string text) OWNER TO supabase_admin;
-
---
--- Name: character_filter(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.character_filter() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$BEGIN
-
-   IF NOT EXISTS(SELECT 1 FROM characters WHERE anime_id = NEW.anime_id AND name = NEW.name)
-
-   THEN
-
-      RETURN NEW;
-
-   ELSE
-
-      RETURN NULL;
-
-   END IF;
-
-END;$$;
-
-
-ALTER FUNCTION public.character_filter() OWNER TO supabase_admin;
-
---
--- Name: delete_expired_schedules(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.delete_expired_schedules() RETURNS boolean
-    LANGUAGE plpgsql
-    AS $$
-
-BEGIN
-
-    delete from kaguya_airing_schedules T1 
-
-    using       kaguya_airing_schedules T2 
-
-    where T1.ctid < T2.ctid
-
-    and T1."mediaId" = T2."mediaId"
-
-    and T1.episode = T2.episode
-
-    or T1."airingAt" <= extract(epoch from now());
-
-    return true;
-
-END;
-
-$$;
-
-
-ALTER FUNCTION public.delete_expired_schedules() OWNER TO supabase_admin;
 
 --
 -- Name: generate_create_table_statement(character varying); Type: FUNCTION; Schema: public; Owner: postgres
@@ -428,72 +262,23 @@ $$;
 ALTER FUNCTION public.handle_new_user() OWNER TO supabase_admin;
 
 --
--- Name: update_anime_episodes(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+-- Name: pgrst_watch(); Type: FUNCTION; Schema: public; Owner: supabase_admin
 --
 
-CREATE FUNCTION public.update_anime_episodes() RETURNS trigger
+CREATE FUNCTION public.pgrst_watch() RETURNS event_trigger
     LANGUAGE plpgsql
     AS $$
 
-  BEGIN
+BEGIN
 
-    update kaguya_anime set "episodeUpdatedAt" = current_timestamp where id = (select "mediaId" from kaguya_anime_source where id = NEW."sourceConnectionId");
+  NOTIFY pgrst, 'reload schema';
 
-
-
-    RETURN NEW;
-
-  END;
+END;
 
 $$;
 
 
-ALTER FUNCTION public.update_anime_episodes() OWNER TO supabase_admin;
-
---
--- Name: update_manga_chapters(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.update_manga_chapters() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-
-  BEGIN
-
-    update kaguya_manga set "chapterUpdatedAt" = current_timestamp where id = (select "mediaId" from kaguya_manga_source where id = NEW."sourceConnectionId");
-
-
-
-    RETURN NEW;
-
-  END;
-
-$$;
-
-
-ALTER FUNCTION public.update_manga_chapters() OWNER TO supabase_admin;
-
---
--- Name: update_new_anime_episodes(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.update_new_anime_episodes() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-
-  BEGIN
-
-    IF EXISTS(SELECT 1 FROM kaguya_episodes where "sourceEpisodeId" = new."sourceEpisodeId" AND "sourceId" = new."sourceId")
-
-    THEN
-
-        RETURN NULL;
-
-    END IF;
-
-
-
-    update kaguya_anime set "episodeUpdatedAt" = current_timestamp where id = NEW."mediaId";
+ALTER FUNCTION public.pgrst_watch() OWNER TO supabase_admin;
 
 --
 -- Name: updated_at(); Type: FUNCTION; Schema: public; Owner: supabase_admin
@@ -1118,20 +903,6 @@ ALTER TABLE ONLY public.reply_comments
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-
---
--- Name: kaguya_episodes handle_anime_episodes_updated_at; Type: TRIGGER; Schema: public; Owner: supabase_admin
---
-
-CREATE TRIGGER handle_anime_episodes_updated_at BEFORE INSERT ON public.kaguya_episodes FOR EACH ROW EXECUTE FUNCTION public.update_anime_episodes();
-
-
---
--- Name: kaguya_chapters handle_manga_chapters_updated_at; Type: TRIGGER; Schema: public; Owner: supabase_admin
---
-
-CREATE TRIGGER handle_manga_chapters_updated_at BEFORE INSERT ON public.kaguya_chapters FOR EACH ROW EXECUTE FUNCTION public.update_manga_chapters();
 
 
 --
@@ -1804,4 +1575,3 @@ ALTER TABLE public.reply_comments ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-
