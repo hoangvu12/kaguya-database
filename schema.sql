@@ -34,205 +34,105 @@ ALTER FUNCTION public.arr2text(ci text[]) OWNER TO supabase_admin;
 CREATE FUNCTION public.generate_create_table_statement(p_table_name character varying) RETURNS SETOF text
     LANGUAGE plpgsql
     AS $_$
-
 DECLARE
-
     v_table_ddl   text;
-
     column_record record;
-
     table_rec record;
-
     constraint_rec record;
-
     firstrec boolean;
-
 BEGIN
-
     FOR table_rec IN
-
         SELECT c.relname FROM pg_catalog.pg_class c
-
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-
                 WHERE relkind = 'r'
-
                 AND relname~ ('^('||p_table_name||')$')
-
                 AND n.nspname <> 'pg_catalog'
-
                 AND n.nspname <> 'information_schema'
-
                 AND n.nspname !~ '^pg_toast'
-
                 AND pg_catalog.pg_table_is_visible(c.oid)
-
           ORDER BY c.relname
-
     LOOP
 
-
-
         FOR column_record IN 
-
             SELECT 
-
                 b.nspname as schema_name,
-
                 b.relname as table_name,
-
                 a.attname as column_name,
-
                 pg_catalog.format_type(a.atttypid, a.atttypmod) as column_type,
-
                 CASE WHEN 
-
                     (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
-
                      FROM pg_catalog.pg_attrdef d
-
                      WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef) IS NOT NULL THEN
-
                     'DEFAULT '|| (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
-
                                   FROM pg_catalog.pg_attrdef d
-
                                   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
-
                 ELSE
-
                     ''
-
                 END as column_default_value,
-
                 CASE WHEN a.attnotnull = true THEN 
-
                     'NOT NULL'
-
                 ELSE
-
                     'NULL'
-
                 END as column_not_null,
-
                 a.attnum as attnum,
-
                 e.max_attnum as max_attnum
-
             FROM 
-
                 pg_catalog.pg_attribute a
-
                 INNER JOIN 
-
                  (SELECT c.oid,
-
                     n.nspname,
-
                     c.relname
-
                   FROM pg_catalog.pg_class c
-
                        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-
                   WHERE c.relname = table_rec.relname
-
                     AND pg_catalog.pg_table_is_visible(c.oid)
-
                   ORDER BY 2, 3) b
-
                 ON a.attrelid = b.oid
-
                 INNER JOIN 
-
                  (SELECT 
-
                       a.attrelid,
-
                       max(a.attnum) as max_attnum
-
                   FROM pg_catalog.pg_attribute a
-
                   WHERE a.attnum > 0 
-
                     AND NOT a.attisdropped
-
                   GROUP BY a.attrelid) e
-
                 ON a.attrelid=e.attrelid
-
             WHERE a.attnum > 0 
-
               AND NOT a.attisdropped
-
             ORDER BY a.attnum
-
         LOOP
-
             IF column_record.attnum = 1 THEN
-
                 v_table_ddl:='CREATE TABLE '||column_record.schema_name||'.'||column_record.table_name||' (';
-
             ELSE
-
                 v_table_ddl:=v_table_ddl||',';
-
             END IF;
-
-
 
             IF column_record.attnum <= column_record.max_attnum THEN
-
                 v_table_ddl:=v_table_ddl||chr(10)||
-
                          '    '||column_record.column_name||' '||column_record.column_type||' '||column_record.column_default_value||' '||column_record.column_not_null;
-
             END IF;
-
         END LOOP;
-
-
 
         firstrec := TRUE;
-
         FOR constraint_rec IN
-
             SELECT conname, pg_get_constraintdef(c.oid) as constrainddef 
-
                 FROM pg_constraint c 
-
                     WHERE conrelid=(
-
                         SELECT attrelid FROM pg_attribute
-
                         WHERE attrelid = (
-
                             SELECT oid FROM pg_class WHERE relname = table_rec.relname
-
                         ) AND attname='tableoid'
-
                     )
-
         LOOP
-
             v_table_ddl:=v_table_ddl||','||chr(10);
-
             v_table_ddl:=v_table_ddl||'CONSTRAINT '||constraint_rec.conname;
-
             v_table_ddl:=v_table_ddl||chr(10)||'    '||constraint_rec.constrainddef;
-
             firstrec := FALSE;
-
         END LOOP;
-
         v_table_ddl:=v_table_ddl||');';
-
         RETURN NEXT v_table_ddl;
-
     END LOOP;
-
 END;
-
 $_$;
 
 
@@ -245,21 +145,51 @@ ALTER FUNCTION public.generate_create_table_statement(p_table_name character var
 CREATE FUNCTION public.handle_new_user() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
-
 begin
-
   insert into public.users (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role)
-
   values (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role) on conflict (id) do update set (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role) = (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role);
-
   return new;
-
 end;
-
 $$;
 
 
 ALTER FUNCTION public.handle_new_user() OWNER TO supabase_admin;
+
+--
+-- Name: notify_mentioned_users(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.notify_mentioned_users() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  mentioned_user_id uuid;
+BEGIN
+  FOREACH mentioned_user_id IN ARRAY NEW.mentioned_user_ids LOOP
+	  INSERT INTO kaguya_notifications ("senderId", "receiverId", "entityType", "entityId", "parentEntityId") VALUES (NEW.user_id, mentioned_user_id, 'comment_mention', NEW.id, NEW.topic);
+  END LOOP;
+RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.notify_mentioned_users() OWNER TO supabase_admin;
+
+--
+-- Name: notify_reacted_users(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.notify_reacted_users() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+	INSERT INTO kaguya_notifications ("senderId", "receiverId", "entityType", "entityId", "parentEntityId") VALUES (NEW.user_id, (select user_id from sce_comments where id = NEW.comment_id), 'comment_reaction', NEW.comment_id, (select topic from sce_comments where id = NEW.comment_id));
+RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.notify_reacted_users() OWNER TO supabase_admin;
 
 --
 -- Name: pgrst_watch(); Type: FUNCTION; Schema: public; Owner: supabase_admin
@@ -268,17 +198,29 @@ ALTER FUNCTION public.handle_new_user() OWNER TO supabase_admin;
 CREATE FUNCTION public.pgrst_watch() RETURNS event_trigger
     LANGUAGE plpgsql
     AS $$
-
 BEGIN
-
   NOTIFY pgrst, 'reload schema';
-
 END;
-
 $$;
 
 
 ALTER FUNCTION public.pgrst_watch() OWNER TO supabase_admin;
+
+--
+-- Name: update_notifcation_users(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.update_notifcation_users() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+	INSERT INTO kaguya_notification_users ("userId", "notificationId") VALUES (NEW."receiverId", NEW.id);
+RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_notifcation_users() OWNER TO supabase_admin;
 
 --
 -- Name: updated_at(); Type: FUNCTION; Schema: public; Owner: supabase_admin
@@ -287,15 +229,10 @@ ALTER FUNCTION public.pgrst_watch() OWNER TO supabase_admin;
 CREATE FUNCTION public.updated_at() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-
 BEGIN
-
     NEW.updated_at = now();
-
     RETURN NEW;
-
 END;
-
 $$;
 
 
@@ -304,69 +241,6 @@ ALTER FUNCTION public.updated_at() OWNER TO supabase_admin;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
-
---
--- Name: comment_reactions; Type: TABLE; Schema: public; Owner: supabase_admin
---
-
-CREATE TABLE public.comment_reactions (
-    id bigint NOT NULL,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    emoji character varying NOT NULL,
-    user_id uuid NOT NULL,
-    comment_id bigint NOT NULL
-);
-
-
-ALTER TABLE public.comment_reactions OWNER TO supabase_admin;
-
---
--- Name: comment_reactions_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE public.comment_reactions ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME public.comment_reactions_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
--- Name: comments; Type: TABLE; Schema: public; Owner: supabase_admin
---
-
-CREATE TABLE public.comments (
-    id bigint NOT NULL,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    body text NOT NULL,
-    anime_id bigint,
-    manga_id bigint,
-    user_id uuid NOT NULL,
-    is_reply boolean DEFAULT false,
-    is_edited boolean DEFAULT false
-);
-
-
-ALTER TABLE public.comments OWNER TO supabase_admin;
-
---
--- Name: comments_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE public.comments ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME public.comments_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
 
 --
 -- Name: kaguya_anime_source; Type: TABLE; Schema: public; Owner: supabase_admin
@@ -424,7 +298,10 @@ CREATE TABLE public.kaguya_chapters (
     "sourceChapterId" character varying NOT NULL,
     "sourceId" character varying NOT NULL,
     slug character varying NOT NULL,
-    "sourceConnectionId" character varying
+    "sourceConnectionId" character varying,
+    "userId" uuid,
+    published boolean DEFAULT true NOT NULL,
+    section character varying
 );
 
 
@@ -443,7 +320,10 @@ CREATE TABLE public.kaguya_episodes (
     "sourceEpisodeId" character varying NOT NULL,
     "sourceMediaId" character varying(255),
     slug character varying NOT NULL,
-    "sourceConnectionId" character varying
+    "sourceConnectionId" character varying,
+    "userId" uuid,
+    published boolean DEFAULT true NOT NULL,
+    section character varying
 );
 
 
@@ -455,6 +335,51 @@ ALTER TABLE public.kaguya_episodes OWNER TO supabase_admin;
 
 ALTER TABLE public.kaguya_episodes ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME public.kaguya_episodes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: kaguya_hostings; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_hostings (
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    id character varying NOT NULL,
+    name character varying NOT NULL,
+    "supportedUrlFormats" text[]
+);
+
+
+ALTER TABLE public.kaguya_hostings OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_images; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_images (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    images json NOT NULL,
+    "userId" uuid NOT NULL,
+    "chapterId" character varying
+);
+
+
+ALTER TABLE public.kaguya_images OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_images_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_images ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.kaguya_images_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -499,6 +424,69 @@ ALTER TABLE public.kaguya_manga_subscribers OWNER TO supabase_admin;
 
 ALTER TABLE public.kaguya_manga_subscribers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME public.kaguya_manga_subscribers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: kaguya_notification_users; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_notification_users (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    "userId" uuid,
+    "isRead" boolean DEFAULT false,
+    "notificationId" bigint
+);
+
+
+ALTER TABLE public.kaguya_notification_users OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_notification_users_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_notification_users ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.kaguya_notification_users_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: kaguya_notifications; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_notifications (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    "entityId" text NOT NULL,
+    "senderId" uuid,
+    "receiverId" uuid NOT NULL,
+    "entityType" character varying NOT NULL,
+    "parentEntityId" text,
+    "isRead" boolean DEFAULT false
+);
+
+
+ALTER TABLE public.kaguya_notifications OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_notifications_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_notifications ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.kaguya_notifications_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -559,8 +547,14 @@ CREATE TABLE public.kaguya_room_users (
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     "roomId" bigint,
-    "userId" uuid,
-    id character varying NOT NULL
+    "userId" text,
+    id character varying NOT NULL,
+    "peerId" text,
+    name character varying,
+    "avatarUrl" text,
+    "isMicMuted" boolean DEFAULT true,
+    "isHeadphoneMuted" boolean DEFAULT false,
+    "useVoiceChat" boolean DEFAULT false
 );
 
 
@@ -607,7 +601,9 @@ CREATE TABLE public.kaguya_sources (
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     name character varying NOT NULL,
-    locales character varying[]
+    locales character varying[],
+    "addedUserId" uuid,
+    "isCustomSource" boolean DEFAULT false
 );
 
 
@@ -627,6 +623,39 @@ CREATE TABLE public.kaguya_subscriptions (
 
 
 ALTER TABLE public.kaguya_subscriptions OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_videos; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_videos (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    video jsonb NOT NULL,
+    subtitles jsonb,
+    fonts jsonb,
+    "episodeId" character varying NOT NULL,
+    "userId" uuid,
+    "hostingId" character varying
+);
+
+
+ALTER TABLE public.kaguya_videos OWNER TO supabase_admin;
+
+--
+-- Name: kaguya_videos_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_videos ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.kaguya_videos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 --
 -- Name: kaguya_watch_status; Type: TABLE; Schema: public; Owner: supabase_admin
@@ -674,33 +703,112 @@ ALTER TABLE public.kaguya_watched ALTER COLUMN id ADD GENERATED BY DEFAULT AS ID
 
 
 --
--- Name: reply_comments; Type: TABLE; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions; Type: TABLE; Schema: public; Owner: postgres
 --
 
-CREATE TABLE public.reply_comments (
-    id bigint NOT NULL,
+CREATE TABLE public.sce_comment_reactions (
+    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    original_id bigint,
-    reply_id bigint
+    comment_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    reaction_type character varying NOT NULL
 );
 
 
-ALTER TABLE public.reply_comments OWNER TO supabase_admin;
+ALTER TABLE public.sce_comment_reactions OWNER TO postgres;
 
 --
--- Name: reply_comments_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions_metadata; Type: VIEW; Schema: public; Owner: postgres
 --
 
-ALTER TABLE public.reply_comments ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME public.reply_comments_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
+CREATE VIEW public.sce_comment_reactions_metadata AS
+ SELECT sce_comment_reactions.comment_id,
+    sce_comment_reactions.reaction_type,
+    count(*) AS reaction_count,
+    bool_or((sce_comment_reactions.user_id = auth.uid())) AS active_for_user
+   FROM public.sce_comment_reactions
+  GROUP BY sce_comment_reactions.comment_id, sce_comment_reactions.reaction_type
+  ORDER BY sce_comment_reactions.reaction_type;
+
+
+ALTER TABLE public.sce_comment_reactions_metadata OWNER TO postgres;
+
+--
+-- Name: sce_comments; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sce_comments (
+    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    topic character varying NOT NULL,
+    comment character varying NOT NULL,
+    user_id uuid NOT NULL,
+    parent_id uuid,
+    mentioned_user_ids uuid[] DEFAULT '{}'::uuid[] NOT NULL
 );
 
+
+ALTER TABLE public.sce_comments OWNER TO postgres;
+
+--
+-- Name: sce_comments_with_metadata; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.sce_comments_with_metadata AS
+ SELECT sce_comments.id,
+    sce_comments.created_at,
+    sce_comments.topic,
+    sce_comments.comment,
+    sce_comments.user_id,
+    sce_comments.parent_id,
+    sce_comments.mentioned_user_ids,
+    ( SELECT count(*) AS count
+           FROM public.sce_comments c
+          WHERE (c.parent_id = sce_comments.id)) AS replies_count
+   FROM public.sce_comments;
+
+
+ALTER TABLE public.sce_comments_with_metadata OWNER TO postgres;
+
+--
+-- Name: sce_display_users; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.sce_display_users AS
+ SELECT users.id,
+    COALESCE((users.raw_user_meta_data ->> 'name'::text), (users.raw_user_meta_data ->> 'full_name'::text), (users.raw_user_meta_data ->> 'user_name'::text)) AS name,
+    COALESCE((users.raw_user_meta_data ->> 'avatar_url'::text), (users.raw_user_meta_data ->> 'avatar'::text)) AS avatar
+   FROM auth.users;
+
+
+ALTER TABLE public.sce_display_users OWNER TO postgres;
+
+--
+-- Name: sce_migrations; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sce_migrations (
+    migration text NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.sce_migrations OWNER TO postgres;
+
+--
+-- Name: sce_reactions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sce_reactions (
+    type character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    label character varying NOT NULL,
+    url character varying NOT NULL,
+    metadata jsonb
+);
+
+
+ALTER TABLE public.sce_reactions OWNER TO postgres;
 
 --
 -- Name: users; Type: TABLE; Schema: public; Owner: supabase_admin
@@ -715,27 +823,12 @@ CREATE TABLE public.users (
     email character varying,
     aud character varying,
     role character varying,
-    auth_role character varying DEFAULT 'user'::character varying NOT NULL
+    "authRole" character varying DEFAULT 'user'::character varying NOT NULL,
+    "isVerified" boolean DEFAULT false NOT NULL
 );
 
 
 ALTER TABLE public.users OWNER TO supabase_admin;
-
---
--- Name: comment_reactions comment_reactions_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.comment_reactions
-    ADD CONSTRAINT comment_reactions_pkey PRIMARY KEY (id);
-
-
---
--- Name: comments comments_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.comments
-    ADD CONSTRAINT comments_pkey PRIMARY KEY (id);
-
 
 --
 -- Name: kaguya_anime_source kaguya_anime_source_id_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
@@ -802,6 +895,38 @@ ALTER TABLE ONLY public.kaguya_episodes
 
 
 --
+-- Name: kaguya_hostings kaguya_hostings_id_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_hostings
+    ADD CONSTRAINT kaguya_hostings_id_key UNIQUE (id);
+
+
+--
+-- Name: kaguya_hostings kaguya_hostings_name_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_hostings
+    ADD CONSTRAINT kaguya_hostings_name_key UNIQUE (name);
+
+
+--
+-- Name: kaguya_hostings kaguya_hostings_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_hostings
+    ADD CONSTRAINT kaguya_hostings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: kaguya_images kaguya_images_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_images
+    ADD CONSTRAINT kaguya_images_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: kaguya_manga_source kaguya_manga_source_id_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -823,6 +948,22 @@ ALTER TABLE ONLY public.kaguya_manga_source
 
 ALTER TABLE ONLY public.kaguya_manga_subscribers
     ADD CONSTRAINT kaguya_manga_subscribers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: kaguya_notification_users kaguya_notification_users_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notification_users
+    ADD CONSTRAINT kaguya_notification_users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: kaguya_notifications kaguya_notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notifications
+    ADD CONSTRAINT kaguya_notifications_pkey PRIMARY KEY (id);
 
 
 --
@@ -874,6 +1015,22 @@ ALTER TABLE ONLY public.kaguya_subscriptions
 
 
 --
+-- Name: kaguya_videos kaguya_videos_episodeId_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_videos
+    ADD CONSTRAINT "kaguya_videos_episodeId_key" UNIQUE ("episodeId");
+
+
+--
+-- Name: kaguya_videos kaguya_videos_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_videos
+    ADD CONSTRAINT kaguya_videos_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: kaguya_watch_status kaguya_watch_status_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -890,11 +1047,43 @@ ALTER TABLE ONLY public.kaguya_watched
 
 
 --
--- Name: reply_comments reply_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions sce_comment_reactions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.reply_comments
-    ADD CONSTRAINT reply_comments_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.sce_comment_reactions
+    ADD CONSTRAINT sce_comment_reactions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sce_comment_reactions sce_comment_reactions_user_id_comment_id_reaction_type_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_comment_reactions
+    ADD CONSTRAINT sce_comment_reactions_user_id_comment_id_reaction_type_key UNIQUE (user_id, comment_id, reaction_type);
+
+
+--
+-- Name: sce_comments sce_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_comments
+    ADD CONSTRAINT sce_comments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sce_migrations sce_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_migrations
+    ADD CONSTRAINT sce_migrations_pkey PRIMARY KEY (migration);
+
+
+--
+-- Name: sce_reactions sce_reactions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_reactions
+    ADD CONSTRAINT sce_reactions_pkey PRIMARY KEY (type);
 
 
 --
@@ -903,6 +1092,27 @@ ALTER TABLE ONLY public.reply_comments
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sce_comments comment_insert_trigger; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER comment_insert_trigger AFTER INSERT ON public.sce_comments FOR EACH ROW EXECUTE FUNCTION public.notify_mentioned_users();
+
+
+--
+-- Name: sce_comment_reactions comment_reaction_insert_trigger; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER comment_reaction_insert_trigger AFTER INSERT ON public.sce_comment_reactions FOR EACH ROW EXECUTE FUNCTION public.notify_reacted_users();
+
+
+--
+-- Name: kaguya_notifications notifcation_insert_trigger; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER notifcation_insert_trigger AFTER INSERT ON public.kaguya_notifications FOR EACH ROW EXECUTE FUNCTION public.update_notifcation_users();
 
 
 --
@@ -962,30 +1172,6 @@ CREATE TRIGGER update_updatedat_kaguya_watched BEFORE UPDATE ON public.kaguya_wa
 
 
 --
--- Name: comment_reactions comment_reactions_comment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.comment_reactions
-    ADD CONSTRAINT comment_reactions_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.comments(id) ON DELETE CASCADE;
-
-
---
--- Name: comment_reactions comment_reactions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.comment_reactions
-    ADD CONSTRAINT comment_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: comments comments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.comments
-    ADD CONSTRAINT comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
-
-
---
 -- Name: kaguya_anime_source kaguya_anime_source_sourceId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -1018,6 +1204,14 @@ ALTER TABLE ONLY public.kaguya_chapters
 
 
 --
+-- Name: kaguya_chapters kaguya_chapters_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_chapters
+    ADD CONSTRAINT "kaguya_chapters_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
 -- Name: kaguya_episodes kaguya_episodes_sourceConnectionId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -1034,6 +1228,30 @@ ALTER TABLE ONLY public.kaguya_episodes
 
 
 --
+-- Name: kaguya_episodes kaguya_episodes_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_episodes
+    ADD CONSTRAINT "kaguya_episodes_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
+-- Name: kaguya_images kaguya_images_chapterId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_images
+    ADD CONSTRAINT "kaguya_images_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES public.kaguya_chapters(slug) ON DELETE CASCADE;
+
+
+--
+-- Name: kaguya_images kaguya_images_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_images
+    ADD CONSTRAINT "kaguya_images_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
 -- Name: kaguya_manga_source kaguya_manga_source_sourceId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -1047,6 +1265,38 @@ ALTER TABLE ONLY public.kaguya_manga_source
 
 ALTER TABLE ONLY public.kaguya_manga_subscribers
     ADD CONSTRAINT "kaguya_manga_subscribers_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
+-- Name: kaguya_notification_users kaguya_notification_users_notificationId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notification_users
+    ADD CONSTRAINT "kaguya_notification_users_notificationId_fkey" FOREIGN KEY ("notificationId") REFERENCES public.kaguya_notifications(id);
+
+
+--
+-- Name: kaguya_notification_users kaguya_notification_users_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notification_users
+    ADD CONSTRAINT "kaguya_notification_users_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
+-- Name: kaguya_notifications kaguya_notifications_receiverId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notifications
+    ADD CONSTRAINT "kaguya_notifications_receiverId_fkey" FOREIGN KEY ("receiverId") REFERENCES public.users(id);
+
+
+--
+-- Name: kaguya_notifications kaguya_notifications_senderId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_notifications
+    ADD CONSTRAINT "kaguya_notifications_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES public.users(id);
 
 
 --
@@ -1082,14 +1332,6 @@ ALTER TABLE ONLY public.kaguya_room_users
 
 
 --
--- Name: kaguya_room_users kaguya_room_users_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.kaguya_room_users
-    ADD CONSTRAINT "kaguya_room_users_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
-
-
---
 -- Name: kaguya_rooms kaguya_rooms_episodeId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -1106,11 +1348,43 @@ ALTER TABLE ONLY public.kaguya_rooms
 
 
 --
+-- Name: kaguya_sources kaguya_sources_addedUserId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_sources
+    ADD CONSTRAINT "kaguya_sources_addedUserId_fkey" FOREIGN KEY ("addedUserId") REFERENCES public.users(id);
+
+
+--
 -- Name: kaguya_subscriptions kaguya_subscriptions_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
 ALTER TABLE ONLY public.kaguya_subscriptions
     ADD CONSTRAINT "kaguya_subscriptions_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
+
+
+--
+-- Name: kaguya_videos kaguya_videos_episodeId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_videos
+    ADD CONSTRAINT "kaguya_videos_episodeId_fkey" FOREIGN KEY ("episodeId") REFERENCES public.kaguya_episodes(slug) ON DELETE CASCADE;
+
+
+--
+-- Name: kaguya_videos kaguya_videos_hostingId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_videos
+    ADD CONSTRAINT "kaguya_videos_hostingId_fkey" FOREIGN KEY ("hostingId") REFERENCES public.kaguya_hostings(id);
+
+
+--
+-- Name: kaguya_videos kaguya_videos_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_videos
+    ADD CONSTRAINT "kaguya_videos_userId_fkey" FOREIGN KEY ("userId") REFERENCES public.users(id);
 
 
 --
@@ -1138,33 +1412,43 @@ ALTER TABLE ONLY public.kaguya_watched
 
 
 --
--- Name: reply_comments reply_comments_original_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions sce_comment_reactions_comment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.reply_comments
-    ADD CONSTRAINT reply_comments_original_id_fkey FOREIGN KEY (original_id) REFERENCES public.comments(id) ON DELETE CASCADE;
-
-
---
--- Name: reply_comments reply_comments_reply_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.reply_comments
-    ADD CONSTRAINT reply_comments_reply_id_fkey FOREIGN KEY (reply_id) REFERENCES public.comments(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.sce_comment_reactions
+    ADD CONSTRAINT sce_comment_reactions_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.sce_comments(id) ON DELETE CASCADE;
 
 
 --
--- Name: comment_reactions Enable access to all users; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions sce_comment_reactions_reaction_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable access to all users" ON public.comment_reactions FOR SELECT USING (true);
+ALTER TABLE ONLY public.sce_comment_reactions
+    ADD CONSTRAINT sce_comment_reactions_reaction_type_fkey FOREIGN KEY (reaction_type) REFERENCES public.sce_reactions(type);
 
 
 --
--- Name: comments Enable access to all users; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions sce_comment_reactions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable access to all users" ON public.comments FOR SELECT USING (true);
+ALTER TABLE ONLY public.sce_comment_reactions
+    ADD CONSTRAINT sce_comment_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sce_comments sce_comments_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_comments
+    ADD CONSTRAINT sce_comments_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.sce_comments(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sce_comments sce_comments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sce_comments
+    ADD CONSTRAINT sce_comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 --
@@ -1266,10 +1550,24 @@ CREATE POLICY "Enable access to all users" ON public.kaguya_watched FOR SELECT U
 
 
 --
--- Name: reply_comments Enable access to all users; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions Enable access to all users; Type: POLICY; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable access to all users" ON public.reply_comments FOR SELECT USING (true);
+CREATE POLICY "Enable access to all users" ON public.sce_comment_reactions FOR SELECT USING (true);
+
+
+--
+-- Name: sce_comments Enable access to all users; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY "Enable access to all users" ON public.sce_comments FOR SELECT USING (true);
+
+
+--
+-- Name: sce_reactions Enable access to all users; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY "Enable access to all users" ON public.sce_reactions FOR SELECT USING (true);
 
 
 --
@@ -1280,17 +1578,12 @@ CREATE POLICY "Enable access to all users" ON public.users FOR SELECT USING (tru
 
 
 --
--- Name: comment_reactions Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: kaguya_anime_source Enable delete for users based on source_id; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable delete for users based on user_id" ON public.comment_reactions FOR DELETE USING ((auth.uid() = user_id));
-
-
---
--- Name: comments Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
---
-
-CREATE POLICY "Enable delete for users based on user_id" ON public.comments FOR DELETE USING ((auth.uid() = user_id));
+CREATE POLICY "Enable delete for users based on source_id" ON public.kaguya_anime_source FOR DELETE USING ((auth.uid() = ( SELECT kaguya_sources."addedUserId"
+   FROM public.kaguya_sources
+  WHERE ((kaguya_anime_source."sourceId")::text = (kaguya_sources.id)::text))));
 
 
 --
@@ -1301,6 +1594,36 @@ CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_anime_
 
 
 --
+-- Name: kaguya_chapters Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_chapters FOR DELETE USING ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_episodes Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_episodes FOR DELETE USING ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_images Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_images FOR DELETE USING ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_manga_source Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_manga_source FOR DELETE USING ((auth.uid() = ( SELECT kaguya_sources."addedUserId"
+   FROM public.kaguya_sources
+  WHERE ((kaguya_manga_source."sourceId")::text = (kaguya_sources.id)::text))));
+
+
+--
 -- Name: kaguya_manga_subscribers Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
@@ -1308,24 +1631,38 @@ CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_manga_
 
 
 --
--- Name: kaguya_room_users Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: kaguya_notification_users Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_room_users FOR DELETE USING ((auth.uid() = "userId"));
-
-
---
--- Name: comment_reactions Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
---
-
-CREATE POLICY "Enable insert for authenticated users only" ON public.comment_reactions FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_notification_users FOR DELETE USING ((auth.uid() = "userId"));
 
 
 --
--- Name: comments Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: kaguya_notifications Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-CREATE POLICY "Enable insert for authenticated users only" ON public.comments FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_notifications FOR DELETE USING ((auth.uid() = "senderId"));
+
+
+--
+-- Name: kaguya_videos Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.kaguya_videos FOR DELETE USING ((auth.uid() = "userId"));
+
+
+--
+-- Name: sce_comment_reactions Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.sce_comment_reactions FOR DELETE USING ((auth.uid() = user_id));
+
+
+--
+-- Name: sce_comments Enable delete for users based on user_id; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY "Enable delete for users based on user_id" ON public.sce_comments FOR DELETE USING ((auth.uid() = user_id));
 
 
 --
@@ -1336,10 +1673,31 @@ CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_anim
 
 
 --
+-- Name: kaguya_images Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_images FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
 -- Name: kaguya_manga_subscribers Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
 CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_manga_subscribers FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+
+
+--
+-- Name: kaguya_notification_users Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_notification_users FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: kaguya_notifications Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_notifications FOR INSERT TO authenticated WITH CHECK (true);
 
 
 --
@@ -1378,6 +1736,13 @@ CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_subs
 
 
 --
+-- Name: kaguya_videos Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_videos FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
 -- Name: kaguya_watch_status Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
@@ -1392,17 +1757,52 @@ CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_watc
 
 
 --
--- Name: reply_comments Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable insert for authenticated users only" ON public.reply_comments FOR INSERT WITH CHECK ((auth.role() = 'authenticated'::text));
+CREATE POLICY "Enable insert for authenticated users only" ON public.sce_comment_reactions FOR INSERT WITH CHECK (((auth.role() = 'authenticated'::text) AND (user_id = auth.uid())));
 
 
 --
--- Name: comment_reactions Enable update for users based on email; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comments Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable update for users based on email" ON public.comment_reactions FOR UPDATE USING ((auth.uid() = user_id)) WITH CHECK ((auth.uid() = user_id));
+CREATE POLICY "Enable insert for authenticated users only" ON public.sce_comments FOR INSERT WITH CHECK (((auth.role() = 'authenticated'::text) AND (user_id = auth.uid())));
+
+
+--
+-- Name: kaguya_hostings Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_hostings FOR SELECT USING (true);
+
+
+--
+-- Name: kaguya_images Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_images FOR SELECT USING (true);
+
+
+--
+-- Name: kaguya_notification_users Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_notification_users FOR SELECT USING (true);
+
+
+--
+-- Name: kaguya_notifications Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_notifications FOR SELECT USING (true);
+
+
+--
+-- Name: kaguya_videos Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_videos FOR SELECT USING (true);
 
 
 --
@@ -1455,30 +1855,60 @@ CREATE POLICY "Enable update for users based on id" ON public.kaguya_watch_statu
 
 
 --
--- Name: comments Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+-- Name: sce_comments Enable update for users based on id; Type: POLICY; Schema: public; Owner: postgres
 --
 
-CREATE POLICY "Enable update for users based on user_id" ON public.comments FOR UPDATE USING ((auth.uid() = user_id));
-
-
---
--- Name: kaguya_room_users Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
---
-
-CREATE POLICY "Enable update for users based on user_id" ON public.kaguya_room_users FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+CREATE POLICY "Enable update for users based on id" ON public.sce_comments FOR UPDATE USING ((auth.uid() = user_id)) WITH CHECK ((auth.uid() = user_id));
 
 
 --
--- Name: comment_reactions; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+-- Name: kaguya_notifications Enable update for users based on senderId; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-ALTER TABLE public.comment_reactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable update for users based on senderId" ON public.kaguya_notifications FOR UPDATE USING ((auth.uid() = "senderId")) WITH CHECK ((auth.uid() = "senderId"));
+
 
 --
--- Name: comments; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+-- Name: kaguya_notification_users Enable update for users based on userId; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
-ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable update for users based on userId" ON public.kaguya_notification_users FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_chapters Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable update for users based on user_id" ON public.kaguya_chapters FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_episodes Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable update for users based on user_id" ON public.kaguya_episodes FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_images Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable update for users based on user_id" ON public.kaguya_images FOR UPDATE USING ((auth.uid() = "userId")) WITH CHECK ((auth.uid() = "userId"));
+
+
+--
+-- Name: kaguya_videos Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable update for users based on user_id" ON public.kaguya_videos FOR UPDATE USING ((auth.uid() = "userId"));
+
+
+--
+-- Name: sce_comment_reactions Enable update for users based on user_id; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY "Enable update for users based on user_id" ON public.sce_comment_reactions FOR UPDATE USING ((auth.uid() = user_id)) WITH CHECK ((auth.uid() = user_id));
+
 
 --
 -- Name: kaguya_anime_source; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
@@ -1505,6 +1935,18 @@ ALTER TABLE public.kaguya_chapters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kaguya_episodes ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: kaguya_hostings; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_hostings ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: kaguya_images; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_images ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: kaguya_manga_source; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
 --
 
@@ -1515,6 +1957,18 @@ ALTER TABLE public.kaguya_manga_source ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.kaguya_manga_subscribers ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: kaguya_notification_users; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_notification_users ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: kaguya_notifications; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_notifications ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: kaguya_read; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
@@ -1553,6 +2007,12 @@ ALTER TABLE public.kaguya_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kaguya_subscriptions ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: kaguya_videos; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_videos ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: kaguya_watch_status; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
 --
 
@@ -1565,13 +2025,547 @@ ALTER TABLE public.kaguya_watch_status ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kaguya_watched ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: reply_comments; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+-- Name: sce_comment_reactions; Type: ROW SECURITY; Schema: public; Owner: postgres
 --
 
-ALTER TABLE public.reply_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sce_comment_reactions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: sce_comments; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.sce_comments ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: sce_migrations; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.sce_migrations ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: sce_reactions; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.sce_reactions ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: users; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
 --
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: postgres
+--
+
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT USAGE ON SCHEMA public TO service_role;
+
+
+--
+-- Name: FUNCTION arr2text(ci text[]); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.arr2text(ci text[]) TO postgres;
+GRANT ALL ON FUNCTION public.arr2text(ci text[]) TO anon;
+GRANT ALL ON FUNCTION public.arr2text(ci text[]) TO authenticated;
+GRANT ALL ON FUNCTION public.arr2text(ci text[]) TO service_role;
+
+
+--
+-- Name: FUNCTION generate_create_table_statement(p_table_name character varying); Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON FUNCTION public.generate_create_table_statement(p_table_name character varying) TO anon;
+GRANT ALL ON FUNCTION public.generate_create_table_statement(p_table_name character varying) TO authenticated;
+GRANT ALL ON FUNCTION public.generate_create_table_statement(p_table_name character varying) TO service_role;
+
+
+--
+-- Name: FUNCTION handle_new_user(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.handle_new_user() TO postgres;
+GRANT ALL ON FUNCTION public.handle_new_user() TO anon;
+GRANT ALL ON FUNCTION public.handle_new_user() TO authenticated;
+GRANT ALL ON FUNCTION public.handle_new_user() TO service_role;
+
+
+--
+-- Name: FUNCTION notify_mentioned_users(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.notify_mentioned_users() TO postgres;
+GRANT ALL ON FUNCTION public.notify_mentioned_users() TO anon;
+GRANT ALL ON FUNCTION public.notify_mentioned_users() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_mentioned_users() TO service_role;
+
+
+--
+-- Name: FUNCTION notify_reacted_users(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.notify_reacted_users() TO postgres;
+GRANT ALL ON FUNCTION public.notify_reacted_users() TO anon;
+GRANT ALL ON FUNCTION public.notify_reacted_users() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_reacted_users() TO service_role;
+
+
+--
+-- Name: FUNCTION pgrst_watch(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.pgrst_watch() TO postgres;
+GRANT ALL ON FUNCTION public.pgrst_watch() TO anon;
+GRANT ALL ON FUNCTION public.pgrst_watch() TO authenticated;
+GRANT ALL ON FUNCTION public.pgrst_watch() TO service_role;
+
+
+--
+-- Name: FUNCTION update_notifcation_users(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.update_notifcation_users() TO postgres;
+GRANT ALL ON FUNCTION public.update_notifcation_users() TO anon;
+GRANT ALL ON FUNCTION public.update_notifcation_users() TO authenticated;
+GRANT ALL ON FUNCTION public.update_notifcation_users() TO service_role;
+
+
+--
+-- Name: FUNCTION updated_at(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.updated_at() TO postgres;
+GRANT ALL ON FUNCTION public.updated_at() TO anon;
+GRANT ALL ON FUNCTION public.updated_at() TO authenticated;
+GRANT ALL ON FUNCTION public.updated_at() TO service_role;
+
+
+--
+-- Name: TABLE kaguya_anime_source; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_anime_source TO postgres;
+GRANT ALL ON TABLE public.kaguya_anime_source TO anon;
+GRANT ALL ON TABLE public.kaguya_anime_source TO authenticated;
+GRANT ALL ON TABLE public.kaguya_anime_source TO service_role;
+
+
+--
+-- Name: TABLE kaguya_anime_subscribers; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_anime_subscribers TO postgres;
+GRANT ALL ON TABLE public.kaguya_anime_subscribers TO anon;
+GRANT ALL ON TABLE public.kaguya_anime_subscribers TO authenticated;
+GRANT ALL ON TABLE public.kaguya_anime_subscribers TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_anime_subscribers_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_anime_subscribers_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_anime_subscribers_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_anime_subscribers_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_anime_subscribers_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_chapters; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_chapters TO postgres;
+GRANT ALL ON TABLE public.kaguya_chapters TO anon;
+GRANT ALL ON TABLE public.kaguya_chapters TO authenticated;
+GRANT ALL ON TABLE public.kaguya_chapters TO service_role;
+
+
+--
+-- Name: TABLE kaguya_episodes; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_episodes TO postgres;
+GRANT ALL ON TABLE public.kaguya_episodes TO anon;
+GRANT ALL ON TABLE public.kaguya_episodes TO authenticated;
+GRANT ALL ON TABLE public.kaguya_episodes TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_episodes_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_episodes_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_episodes_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_episodes_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_episodes_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_hostings; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_hostings TO postgres;
+GRANT ALL ON TABLE public.kaguya_hostings TO anon;
+GRANT ALL ON TABLE public.kaguya_hostings TO authenticated;
+GRANT ALL ON TABLE public.kaguya_hostings TO service_role;
+
+
+--
+-- Name: TABLE kaguya_images; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_images TO postgres;
+GRANT ALL ON TABLE public.kaguya_images TO anon;
+GRANT ALL ON TABLE public.kaguya_images TO authenticated;
+GRANT ALL ON TABLE public.kaguya_images TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_images_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_images_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_images_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_images_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_images_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_manga_source; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_manga_source TO postgres;
+GRANT ALL ON TABLE public.kaguya_manga_source TO anon;
+GRANT ALL ON TABLE public.kaguya_manga_source TO authenticated;
+GRANT ALL ON TABLE public.kaguya_manga_source TO service_role;
+
+
+--
+-- Name: TABLE kaguya_manga_subscribers; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_manga_subscribers TO postgres;
+GRANT ALL ON TABLE public.kaguya_manga_subscribers TO anon;
+GRANT ALL ON TABLE public.kaguya_manga_subscribers TO authenticated;
+GRANT ALL ON TABLE public.kaguya_manga_subscribers TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_manga_subscribers_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_manga_subscribers_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_manga_subscribers_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_manga_subscribers_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_manga_subscribers_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_notification_users; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_notification_users TO postgres;
+GRANT ALL ON TABLE public.kaguya_notification_users TO anon;
+GRANT ALL ON TABLE public.kaguya_notification_users TO authenticated;
+GRANT ALL ON TABLE public.kaguya_notification_users TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_notification_users_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_notification_users_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_notification_users_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_notification_users_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_notification_users_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_notifications; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_notifications TO postgres;
+GRANT ALL ON TABLE public.kaguya_notifications TO anon;
+GRANT ALL ON TABLE public.kaguya_notifications TO authenticated;
+GRANT ALL ON TABLE public.kaguya_notifications TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_notifications_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_notifications_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_notifications_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_notifications_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_notifications_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_read; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_read TO postgres;
+GRANT ALL ON TABLE public.kaguya_read TO anon;
+GRANT ALL ON TABLE public.kaguya_read TO authenticated;
+GRANT ALL ON TABLE public.kaguya_read TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_read_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_read_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_read_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_read_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_read_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_read_status; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_read_status TO postgres;
+GRANT ALL ON TABLE public.kaguya_read_status TO anon;
+GRANT ALL ON TABLE public.kaguya_read_status TO authenticated;
+GRANT ALL ON TABLE public.kaguya_read_status TO service_role;
+
+
+--
+-- Name: TABLE kaguya_room_users; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_room_users TO postgres;
+GRANT ALL ON TABLE public.kaguya_room_users TO anon;
+GRANT ALL ON TABLE public.kaguya_room_users TO authenticated;
+GRANT ALL ON TABLE public.kaguya_room_users TO service_role;
+
+
+--
+-- Name: TABLE kaguya_rooms; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_rooms TO postgres;
+GRANT ALL ON TABLE public.kaguya_rooms TO anon;
+GRANT ALL ON TABLE public.kaguya_rooms TO authenticated;
+GRANT ALL ON TABLE public.kaguya_rooms TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_rooms_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_rooms_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_rooms_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_rooms_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_rooms_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_sources; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_sources TO postgres;
+GRANT ALL ON TABLE public.kaguya_sources TO anon;
+GRANT ALL ON TABLE public.kaguya_sources TO authenticated;
+GRANT ALL ON TABLE public.kaguya_sources TO service_role;
+
+
+--
+-- Name: TABLE kaguya_subscriptions; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_subscriptions TO postgres;
+GRANT ALL ON TABLE public.kaguya_subscriptions TO anon;
+GRANT ALL ON TABLE public.kaguya_subscriptions TO authenticated;
+GRANT ALL ON TABLE public.kaguya_subscriptions TO service_role;
+
+
+--
+-- Name: TABLE kaguya_videos; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_videos TO postgres;
+GRANT ALL ON TABLE public.kaguya_videos TO anon;
+GRANT ALL ON TABLE public.kaguya_videos TO authenticated;
+GRANT ALL ON TABLE public.kaguya_videos TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_videos_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_videos_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_videos_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_videos_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_videos_id_seq TO service_role;
+
+
+--
+-- Name: TABLE kaguya_watch_status; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_watch_status TO postgres;
+GRANT ALL ON TABLE public.kaguya_watch_status TO anon;
+GRANT ALL ON TABLE public.kaguya_watch_status TO authenticated;
+GRANT ALL ON TABLE public.kaguya_watch_status TO service_role;
+
+
+--
+-- Name: TABLE kaguya_watched; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_watched TO postgres;
+GRANT ALL ON TABLE public.kaguya_watched TO anon;
+GRANT ALL ON TABLE public.kaguya_watched TO authenticated;
+GRANT ALL ON TABLE public.kaguya_watched TO service_role;
+
+
+--
+-- Name: SEQUENCE kaguya_watched_id_seq; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON SEQUENCE public.kaguya_watched_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.kaguya_watched_id_seq TO anon;
+GRANT ALL ON SEQUENCE public.kaguya_watched_id_seq TO authenticated;
+GRANT ALL ON SEQUENCE public.kaguya_watched_id_seq TO service_role;
+
+
+--
+-- Name: TABLE sce_comment_reactions; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_comment_reactions TO anon;
+GRANT ALL ON TABLE public.sce_comment_reactions TO authenticated;
+GRANT ALL ON TABLE public.sce_comment_reactions TO service_role;
+
+
+--
+-- Name: TABLE sce_comment_reactions_metadata; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_comment_reactions_metadata TO anon;
+GRANT ALL ON TABLE public.sce_comment_reactions_metadata TO authenticated;
+GRANT ALL ON TABLE public.sce_comment_reactions_metadata TO service_role;
+
+
+--
+-- Name: TABLE sce_comments; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_comments TO anon;
+GRANT ALL ON TABLE public.sce_comments TO authenticated;
+GRANT ALL ON TABLE public.sce_comments TO service_role;
+
+
+--
+-- Name: TABLE sce_comments_with_metadata; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_comments_with_metadata TO anon;
+GRANT ALL ON TABLE public.sce_comments_with_metadata TO authenticated;
+GRANT ALL ON TABLE public.sce_comments_with_metadata TO service_role;
+
+
+--
+-- Name: TABLE sce_display_users; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_display_users TO anon;
+GRANT ALL ON TABLE public.sce_display_users TO authenticated;
+GRANT ALL ON TABLE public.sce_display_users TO service_role;
+
+
+--
+-- Name: TABLE sce_migrations; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_migrations TO anon;
+GRANT ALL ON TABLE public.sce_migrations TO authenticated;
+GRANT ALL ON TABLE public.sce_migrations TO service_role;
+
+
+--
+-- Name: TABLE sce_reactions; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.sce_reactions TO anon;
+GRANT ALL ON TABLE public.sce_reactions TO authenticated;
+GRANT ALL ON TABLE public.sce_reactions TO service_role;
+
+
+--
+-- Name: TABLE users; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.users TO postgres;
+GRANT ALL ON TABLE public.users TO anon;
+GRANT ALL ON TABLE public.users TO authenticated;
+GRANT ALL ON TABLE public.users TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: postgres
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES  TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: postgres
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS  TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: postgres
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES  TO service_role;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO service_role;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
