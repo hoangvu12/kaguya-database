@@ -34,105 +34,205 @@ ALTER FUNCTION public.arr2text(ci text[]) OWNER TO supabase_admin;
 CREATE FUNCTION public.generate_create_table_statement(p_table_name character varying) RETURNS SETOF text
     LANGUAGE plpgsql
     AS $_$
+
 DECLARE
+
     v_table_ddl   text;
+
     column_record record;
+
     table_rec record;
+
     constraint_rec record;
+
     firstrec boolean;
+
 BEGIN
+
     FOR table_rec IN
+
         SELECT c.relname FROM pg_catalog.pg_class c
+
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+
                 WHERE relkind = 'r'
+
                 AND relname~ ('^('||p_table_name||')$')
+
                 AND n.nspname <> 'pg_catalog'
+
                 AND n.nspname <> 'information_schema'
+
                 AND n.nspname !~ '^pg_toast'
+
                 AND pg_catalog.pg_table_is_visible(c.oid)
+
           ORDER BY c.relname
+
     LOOP
 
+
+
         FOR column_record IN 
+
             SELECT 
+
                 b.nspname as schema_name,
+
                 b.relname as table_name,
+
                 a.attname as column_name,
+
                 pg_catalog.format_type(a.atttypid, a.atttypmod) as column_type,
+
                 CASE WHEN 
+
                     (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
+
                      FROM pg_catalog.pg_attrdef d
+
                      WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef) IS NOT NULL THEN
+
                     'DEFAULT '|| (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
+
                                   FROM pg_catalog.pg_attrdef d
+
                                   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
+
                 ELSE
+
                     ''
+
                 END as column_default_value,
+
                 CASE WHEN a.attnotnull = true THEN 
+
                     'NOT NULL'
+
                 ELSE
+
                     'NULL'
+
                 END as column_not_null,
+
                 a.attnum as attnum,
+
                 e.max_attnum as max_attnum
+
             FROM 
+
                 pg_catalog.pg_attribute a
+
                 INNER JOIN 
+
                  (SELECT c.oid,
+
                     n.nspname,
+
                     c.relname
+
                   FROM pg_catalog.pg_class c
+
                        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+
                   WHERE c.relname = table_rec.relname
+
                     AND pg_catalog.pg_table_is_visible(c.oid)
+
                   ORDER BY 2, 3) b
+
                 ON a.attrelid = b.oid
+
                 INNER JOIN 
+
                  (SELECT 
+
                       a.attrelid,
+
                       max(a.attnum) as max_attnum
+
                   FROM pg_catalog.pg_attribute a
+
                   WHERE a.attnum > 0 
+
                     AND NOT a.attisdropped
+
                   GROUP BY a.attrelid) e
+
                 ON a.attrelid=e.attrelid
+
             WHERE a.attnum > 0 
+
               AND NOT a.attisdropped
+
             ORDER BY a.attnum
+
         LOOP
+
             IF column_record.attnum = 1 THEN
+
                 v_table_ddl:='CREATE TABLE '||column_record.schema_name||'.'||column_record.table_name||' (';
+
             ELSE
+
                 v_table_ddl:=v_table_ddl||',';
+
             END IF;
+
+
 
             IF column_record.attnum <= column_record.max_attnum THEN
+
                 v_table_ddl:=v_table_ddl||chr(10)||
+
                          '    '||column_record.column_name||' '||column_record.column_type||' '||column_record.column_default_value||' '||column_record.column_not_null;
+
             END IF;
+
         END LOOP;
 
+
+
         firstrec := TRUE;
+
         FOR constraint_rec IN
+
             SELECT conname, pg_get_constraintdef(c.oid) as constrainddef 
+
                 FROM pg_constraint c 
+
                     WHERE conrelid=(
+
                         SELECT attrelid FROM pg_attribute
+
                         WHERE attrelid = (
+
                             SELECT oid FROM pg_class WHERE relname = table_rec.relname
+
                         ) AND attname='tableoid'
+
                     )
+
         LOOP
+
             v_table_ddl:=v_table_ddl||','||chr(10);
+
             v_table_ddl:=v_table_ddl||'CONSTRAINT '||constraint_rec.conname;
+
             v_table_ddl:=v_table_ddl||chr(10)||'    '||constraint_rec.constrainddef;
+
             firstrec := FALSE;
+
         END LOOP;
+
         v_table_ddl:=v_table_ddl||');';
+
         RETURN NEXT v_table_ddl;
+
     END LOOP;
+
 END;
+
 $_$;
 
 
@@ -145,11 +245,17 @@ ALTER FUNCTION public.generate_create_table_statement(p_table_name character var
 CREATE FUNCTION public.handle_new_user() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
+
 begin
+
   insert into public.users (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role)
+
   values (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role) on conflict (id) do update set (id, email, created_at, updated_at, user_metadata, raw_app_meta_data, aud, role) = (new.id, new.email, new.created_at, new.updated_at, new.raw_user_meta_data, new.raw_app_meta_data, new.aud, new.role);
+
   return new;
+
 end;
+
 $$;
 
 
@@ -162,14 +268,23 @@ ALTER FUNCTION public.handle_new_user() OWNER TO supabase_admin;
 CREATE FUNCTION public.notify_mentioned_users() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+
 DECLARE
+
   mentioned_user_id uuid;
+
 BEGIN
+
   FOREACH mentioned_user_id IN ARRAY NEW.mentioned_user_ids LOOP
+
 	  INSERT INTO kaguya_notifications ("senderId", "receiverId", "entityType", "entityId", "parentEntityId") VALUES (NEW.user_id, mentioned_user_id, 'comment_mention', NEW.id, NEW.topic);
+
   END LOOP;
+
 RETURN NEW;
+
 END;
+
 $$;
 
 
@@ -182,10 +297,15 @@ ALTER FUNCTION public.notify_mentioned_users() OWNER TO supabase_admin;
 CREATE FUNCTION public.notify_reacted_users() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+
 BEGIN
+
 	INSERT INTO kaguya_notifications ("senderId", "receiverId", "entityType", "entityId", "parentEntityId") VALUES (NEW.user_id, (select user_id from sce_comments where id = NEW.comment_id), 'comment_reaction', NEW.comment_id, (select topic from sce_comments where id = NEW.comment_id));
+
 RETURN NEW;
+
 END;
+
 $$;
 
 
@@ -198,9 +318,13 @@ ALTER FUNCTION public.notify_reacted_users() OWNER TO supabase_admin;
 CREATE FUNCTION public.pgrst_watch() RETURNS event_trigger
     LANGUAGE plpgsql
     AS $$
+
 BEGIN
+
   NOTIFY pgrst, 'reload schema';
+
 END;
+
 $$;
 
 
@@ -213,10 +337,15 @@ ALTER FUNCTION public.pgrst_watch() OWNER TO supabase_admin;
 CREATE FUNCTION public.update_notifcation_users() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+
 BEGIN
+
 	INSERT INTO kaguya_notification_users ("userId", "notificationId") VALUES (NEW."receiverId", NEW.id);
+
 RETURN NEW;
+
 END;
+
 $$;
 
 
@@ -229,10 +358,15 @@ ALTER FUNCTION public.update_notifcation_users() OWNER TO supabase_admin;
 CREATE FUNCTION public.updated_at() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+
 BEGIN
+
     NEW.updated_at = now();
+
     RETURN NEW;
+
 END;
+
 $$;
 
 
@@ -625,6 +759,30 @@ CREATE TABLE public.kaguya_subscriptions (
 ALTER TABLE public.kaguya_subscriptions OWNER TO supabase_admin;
 
 --
+-- Name: kaguya_translations; Type: TABLE; Schema: public; Owner: supabase_admin
+--
+
+CREATE TABLE public.kaguya_translations (
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    title character varying,
+    description text,
+    "mediaId" bigint NOT NULL,
+    locale character varying NOT NULL,
+    "mediaType" character varying NOT NULL
+);
+
+
+ALTER TABLE public.kaguya_translations OWNER TO supabase_admin;
+
+--
+-- Name: TABLE kaguya_translations; Type: COMMENT; Schema: public; Owner: supabase_admin
+--
+
+COMMENT ON TABLE public.kaguya_translations IS 'Translations of media';
+
+
+--
 -- Name: kaguya_videos; Type: TABLE; Schema: public; Owner: supabase_admin
 --
 
@@ -1015,6 +1173,14 @@ ALTER TABLE ONLY public.kaguya_subscriptions
 
 
 --
+-- Name: kaguya_translations kaguya_translations_pkey; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE ONLY public.kaguya_translations
+    ADD CONSTRAINT kaguya_translations_pkey PRIMARY KEY ("mediaId", locale, "mediaType");
+
+
+--
 -- Name: kaguya_videos kaguya_videos_episodeId_key; Type: CONSTRAINT; Schema: public; Owner: supabase_admin
 --
 
@@ -1095,6 +1261,34 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: idx_anime_source_id; Type: INDEX; Schema: public; Owner: supabase_admin
+--
+
+CREATE INDEX idx_anime_source_id ON public.kaguya_anime_source USING btree (id);
+
+
+--
+-- Name: idx_chapter_slug; Type: INDEX; Schema: public; Owner: supabase_admin
+--
+
+CREATE INDEX idx_chapter_slug ON public.kaguya_chapters USING btree ("sourceConnectionId", "sourceId");
+
+
+--
+-- Name: idx_episode_slug; Type: INDEX; Schema: public; Owner: supabase_admin
+--
+
+CREATE INDEX idx_episode_slug ON public.kaguya_episodes USING btree ("sourceConnectionId", "sourceId");
+
+
+--
+-- Name: idx_manga_source_id; Type: INDEX; Schema: public; Owner: supabase_admin
+--
+
+CREATE INDEX idx_manga_source_id ON public.kaguya_manga_source USING btree (id);
+
+
+--
 -- Name: sce_comments comment_insert_trigger; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1169,14 +1363,6 @@ CREATE TRIGGER update_updatedat_kaguya_subscriptions BEFORE UPDATE ON public.kag
 --
 
 CREATE TRIGGER update_updatedat_kaguya_watched BEFORE UPDATE ON public.kaguya_watched FOR EACH ROW EXECUTE FUNCTION public.updated_at();
-
-
---
--- Name: kaguya_anime_source kaguya_anime_source_sourceId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: supabase_admin
---
-
-ALTER TABLE ONLY public.kaguya_anime_source
-    ADD CONSTRAINT "kaguya_anime_source_sourceId_fkey" FOREIGN KEY ("sourceId") REFERENCES public.kaguya_sources(id) ON DELETE CASCADE;
 
 
 --
@@ -1736,6 +1922,13 @@ CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_subs
 
 
 --
+-- Name: kaguya_translations Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable insert for authenticated users only" ON public.kaguya_translations FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
 -- Name: kaguya_videos Enable insert for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
@@ -1799,10 +1992,24 @@ CREATE POLICY "Enable read access for all users" ON public.kaguya_notifications 
 
 
 --
+-- Name: kaguya_translations Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable read access for all users" ON public.kaguya_translations FOR SELECT USING (true);
+
+
+--
 -- Name: kaguya_videos Enable read access for all users; Type: POLICY; Schema: public; Owner: supabase_admin
 --
 
 CREATE POLICY "Enable read access for all users" ON public.kaguya_videos FOR SELECT USING (true);
+
+
+--
+-- Name: kaguya_translations Enable update for authenticated users only; Type: POLICY; Schema: public; Owner: supabase_admin
+--
+
+CREATE POLICY "Enable update for authenticated users only" ON public.kaguya_translations FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 
 --
@@ -2005,6 +2212,12 @@ ALTER TABLE public.kaguya_sources ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.kaguya_subscriptions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: kaguya_translations; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
+--
+
+ALTER TABLE public.kaguya_translations ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: kaguya_videos; Type: ROW SECURITY; Schema: public; Owner: supabase_admin
@@ -2380,6 +2593,16 @@ GRANT ALL ON TABLE public.kaguya_subscriptions TO postgres;
 GRANT ALL ON TABLE public.kaguya_subscriptions TO anon;
 GRANT ALL ON TABLE public.kaguya_subscriptions TO authenticated;
 GRANT ALL ON TABLE public.kaguya_subscriptions TO service_role;
+
+
+--
+-- Name: TABLE kaguya_translations; Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON TABLE public.kaguya_translations TO postgres;
+GRANT ALL ON TABLE public.kaguya_translations TO anon;
+GRANT ALL ON TABLE public.kaguya_translations TO authenticated;
+GRANT ALL ON TABLE public.kaguya_translations TO service_role;
 
 
 --
