@@ -1288,6 +1288,14 @@ CREATE INDEX idx_episode_slug ON public.kaguya_episodes USING btree ("sourceConn
 CREATE INDEX idx_manga_source_id ON public.kaguya_manga_source USING btree (id);
 
 
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+create trigger on_auth_user_updated
+  after update on auth.users
+  for each row execute procedure public.handle_new_user();
+
 --
 -- Name: sce_comments comment_insert_trigger; Type: TRIGGER; Schema: public; Owner: postgres
 --
