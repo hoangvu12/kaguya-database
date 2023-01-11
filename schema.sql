@@ -16,8 +16,225 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-COMMENT ON SCHEMA public IS 'standard public schema';
-
+DROP POLICY IF EXISTS "Enable update for users based on user_id" ON public.sce_comment_reactions;
+DROP POLICY IF EXISTS "Enable update for users based on user_id" ON public.kaguya_videos;
+DROP POLICY IF EXISTS "Enable update for users based on user_id" ON public.kaguya_images;
+DROP POLICY IF EXISTS "Enable update for users based on user_id" ON public.kaguya_episodes;
+DROP POLICY IF EXISTS "Enable update for users based on user_id" ON public.kaguya_chapters;
+DROP POLICY IF EXISTS "Enable update for users based on userId" ON public.kaguya_notification_users;
+DROP POLICY IF EXISTS "Enable update for users based on senderId" ON public.kaguya_notifications;
+DROP POLICY IF EXISTS "Enable update for users based on id" ON public.sce_comments;
+DROP POLICY IF EXISTS "Enable update for users based on id" ON public.kaguya_watch_status;
+DROP POLICY IF EXISTS "Enable update for users based on id" ON public.kaguya_read_status;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.users;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.kaguya_watched;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.kaguya_subscriptions;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.kaguya_read;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.kaguya_manga_subscribers;
+DROP POLICY IF EXISTS "Enable update for users based on email" ON public.kaguya_anime_subscribers;
+DROP POLICY IF EXISTS "Enable update for authenticated users only" ON public.kaguya_translations;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_videos;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_translations;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_notifications;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_notification_users;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_images;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_hostings;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.kaguya_dmca;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.sce_comments;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.sce_comment_reactions;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_watched;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_watch_status;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_videos;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_translations;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_subscriptions;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_rooms;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_room_users;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_read_status;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_read;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_notifications;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_notification_users;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_manga_subscribers;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_images;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.kaguya_anime_subscribers;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.sce_comments;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.sce_comment_reactions;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_videos;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_notifications;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_notification_users;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_manga_subscribers;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_manga_source;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_images;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_episodes;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_chapters;
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.kaguya_anime_subscribers;
+DROP POLICY IF EXISTS "Enable delete for users based on source_id" ON public.kaguya_anime_source;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.users;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.sce_reactions;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.sce_comments;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.sce_comment_reactions;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_watched;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_watch_status;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_subscriptions;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_sources;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_rooms;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_room_users;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_read_status;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_read;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_manga_subscribers;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_manga_source;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_episodes;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_chapters;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_anime_subscribers;
+DROP POLICY IF EXISTS "Enable access to all users" ON public.kaguya_anime_source;
+ALTER TABLE IF EXISTS ONLY public.sce_comments DROP CONSTRAINT IF EXISTS sce_comments_user_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comments DROP CONSTRAINT IF EXISTS sce_comments_parent_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comment_reactions DROP CONSTRAINT IF EXISTS sce_comment_reactions_user_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comment_reactions DROP CONSTRAINT IF EXISTS sce_comment_reactions_reaction_type_fkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comment_reactions DROP CONSTRAINT IF EXISTS sce_comment_reactions_comment_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_watched DROP CONSTRAINT IF EXISTS "kaguya_watched_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_watched DROP CONSTRAINT IF EXISTS "kaguya_watched_episodeId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_watch_status DROP CONSTRAINT IF EXISTS "kaguya_watch_status_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_videos DROP CONSTRAINT IF EXISTS "kaguya_videos_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_videos DROP CONSTRAINT IF EXISTS "kaguya_videos_hostingId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_videos DROP CONSTRAINT IF EXISTS "kaguya_videos_episodeId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_subscriptions DROP CONSTRAINT IF EXISTS "kaguya_subscriptions_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_sources DROP CONSTRAINT IF EXISTS "kaguya_sources_addedUserId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_rooms DROP CONSTRAINT IF EXISTS "kaguya_rooms_hostUserId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_rooms DROP CONSTRAINT IF EXISTS "kaguya_rooms_episodeId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_room_users DROP CONSTRAINT IF EXISTS "kaguya_room_users_roomId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_read DROP CONSTRAINT IF EXISTS "kaguya_read_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_read_status DROP CONSTRAINT IF EXISTS "kaguya_read_status_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_read DROP CONSTRAINT IF EXISTS "kaguya_read_chapterId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_notifications DROP CONSTRAINT IF EXISTS "kaguya_notifications_senderId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_notifications DROP CONSTRAINT IF EXISTS "kaguya_notifications_receiverId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_notification_users DROP CONSTRAINT IF EXISTS "kaguya_notification_users_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_notification_users DROP CONSTRAINT IF EXISTS "kaguya_notification_users_notificationId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_manga_subscribers DROP CONSTRAINT IF EXISTS "kaguya_manga_subscribers_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_manga_source DROP CONSTRAINT IF EXISTS "kaguya_manga_source_sourceId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_images DROP CONSTRAINT IF EXISTS "kaguya_images_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_images DROP CONSTRAINT IF EXISTS "kaguya_images_chapterId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS "kaguya_episodes_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS "kaguya_episodes_sourceId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS "kaguya_episodes_sourceConnectionId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_chapters DROP CONSTRAINT IF EXISTS "kaguya_chapters_userId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_chapters DROP CONSTRAINT IF EXISTS "kaguya_chapters_sourceId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_chapters DROP CONSTRAINT IF EXISTS "kaguya_chapters_sourceConnectionId_fkey";
+ALTER TABLE IF EXISTS ONLY public.kaguya_anime_subscribers DROP CONSTRAINT IF EXISTS "kaguya_anime_subscribers_userId_fkey";
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_watched ON public.kaguya_watched;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_watch_status ON public.kaguya_watch_status;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_videos ON public.kaguya_videos;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_translations ON public.kaguya_translations;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_subscriptions ON public.kaguya_subscriptions;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_sources ON public.kaguya_sources;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_rooms ON public.kaguya_rooms;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_room_users ON public.kaguya_room_users;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_read_status ON public.kaguya_read_status;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_read ON public.kaguya_read;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_notifications ON public.kaguya_notifications;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_notification_users ON public.kaguya_notification_users;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_manga_source ON public.kaguya_manga_source;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_images ON public.kaguya_images;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_hostings ON public.kaguya_hostings;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_episodes ON public.kaguya_episodes;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_dmca ON public.kaguya_dmca;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_chapters ON public.kaguya_chapters;
+DROP TRIGGER IF EXISTS update_updatedat_kaguya_anime_source ON public.kaguya_anime_source;
+DROP TRIGGER IF EXISTS notifcation_insert_trigger ON public.kaguya_notifications;
+DROP TRIGGER IF EXISTS comment_reaction_insert_trigger ON public.sce_comment_reactions;
+DROP TRIGGER IF EXISTS comment_insert_trigger ON public.sce_comments;
+DROP INDEX IF EXISTS public.users_id_index;
+DROP INDEX IF EXISTS public.idx_watched;
+DROP INDEX IF EXISTS public.idx_watch_status;
+DROP INDEX IF EXISTS public.idx_videos;
+DROP INDEX IF EXISTS public.idx_subscriptions;
+DROP INDEX IF EXISTS public.idx_sources;
+DROP INDEX IF EXISTS public.idx_rooms;
+DROP INDEX IF EXISTS public.idx_room_users;
+DROP INDEX IF EXISTS public.idx_read_status;
+DROP INDEX IF EXISTS public.idx_read;
+DROP INDEX IF EXISTS public.idx_notifications;
+DROP INDEX IF EXISTS public.idx_notification_users;
+DROP INDEX IF EXISTS public.idx_manga_subscriber_user_id;
+DROP INDEX IF EXISTS public.idx_manga_source_id;
+DROP INDEX IF EXISTS public.idx_images;
+DROP INDEX IF EXISTS public.idx_episode_slug;
+DROP INDEX IF EXISTS public.idx_chapter_slug;
+DROP INDEX IF EXISTS public.idx_anime_subscriber_user_id;
+DROP INDEX IF EXISTS public.idx_anime_source_id;
+ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_username_key;
+ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_pkey;
+ALTER TABLE IF EXISTS ONLY public.sce_reactions DROP CONSTRAINT IF EXISTS sce_reactions_pkey;
+ALTER TABLE IF EXISTS ONLY public.sce_migrations DROP CONSTRAINT IF EXISTS sce_migrations_pkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comments DROP CONSTRAINT IF EXISTS sce_comments_pkey;
+ALTER TABLE IF EXISTS ONLY public.sce_comment_reactions DROP CONSTRAINT IF EXISTS sce_comment_reactions_user_id_comment_id_reaction_type_key;
+ALTER TABLE IF EXISTS ONLY public.sce_comment_reactions DROP CONSTRAINT IF EXISTS sce_comment_reactions_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_watched DROP CONSTRAINT IF EXISTS kaguya_watched_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_watch_status DROP CONSTRAINT IF EXISTS kaguya_watch_status_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_videos DROP CONSTRAINT IF EXISTS kaguya_videos_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_videos DROP CONSTRAINT IF EXISTS "kaguya_videos_episodeId_key";
+ALTER TABLE IF EXISTS ONLY public.kaguya_translations DROP CONSTRAINT IF EXISTS kaguya_translations_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_subscriptions DROP CONSTRAINT IF EXISTS kaguya_subscriptions_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_sources DROP CONSTRAINT IF EXISTS kaguya_sources_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_rooms DROP CONSTRAINT IF EXISTS kaguya_rooms_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_room_users DROP CONSTRAINT IF EXISTS kaguya_room_users_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_read_status DROP CONSTRAINT IF EXISTS kaguya_read_status_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_read DROP CONSTRAINT IF EXISTS kaguya_read_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_notifications DROP CONSTRAINT IF EXISTS kaguya_notifications_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_notification_users DROP CONSTRAINT IF EXISTS kaguya_notification_users_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_manga_subscribers DROP CONSTRAINT IF EXISTS kaguya_manga_subscribers_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_manga_source DROP CONSTRAINT IF EXISTS kaguya_manga_source_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_manga_source DROP CONSTRAINT IF EXISTS kaguya_manga_source_id_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_images DROP CONSTRAINT IF EXISTS kaguya_images_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_hostings DROP CONSTRAINT IF EXISTS kaguya_hostings_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_hostings DROP CONSTRAINT IF EXISTS kaguya_hostings_name_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_hostings DROP CONSTRAINT IF EXISTS kaguya_hostings_id_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS kaguya_episodes_slug_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS kaguya_episodes_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_episodes DROP CONSTRAINT IF EXISTS kaguya_episodes_id_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_dmca DROP CONSTRAINT IF EXISTS kaguya_dmca_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_chapters DROP CONSTRAINT IF EXISTS kaguya_chapters_slug_key;
+ALTER TABLE IF EXISTS ONLY public.kaguya_chapters DROP CONSTRAINT IF EXISTS kaguya_chapters_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_anime_subscribers DROP CONSTRAINT IF EXISTS kaguya_anime_subscribers_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_anime_source DROP CONSTRAINT IF EXISTS kaguya_anime_source_pkey;
+ALTER TABLE IF EXISTS ONLY public.kaguya_anime_source DROP CONSTRAINT IF EXISTS kaguya_anime_source_id_key;
+DROP TABLE IF EXISTS public.sce_reactions;
+DROP TABLE IF EXISTS public.sce_migrations;
+DROP VIEW IF EXISTS public.sce_display_users;
+DROP TABLE IF EXISTS public.users;
+DROP VIEW IF EXISTS public.sce_comments_with_metadata;
+DROP TABLE IF EXISTS public.sce_comments;
+DROP VIEW IF EXISTS public.sce_comment_reactions_metadata;
+DROP TABLE IF EXISTS public.sce_comment_reactions;
+DROP TABLE IF EXISTS public.kaguya_watched;
+DROP TABLE IF EXISTS public.kaguya_watch_status;
+DROP TABLE IF EXISTS public.kaguya_videos;
+DROP TABLE IF EXISTS public.kaguya_translations;
+DROP TABLE IF EXISTS public.kaguya_subscriptions;
+DROP TABLE IF EXISTS public.kaguya_sources;
+DROP TABLE IF EXISTS public.kaguya_rooms;
+DROP TABLE IF EXISTS public.kaguya_room_users;
+DROP TABLE IF EXISTS public.kaguya_read_status;
+DROP TABLE IF EXISTS public.kaguya_read;
+DROP TABLE IF EXISTS public.kaguya_notifications;
+DROP TABLE IF EXISTS public.kaguya_notification_users;
+DROP TABLE IF EXISTS public.kaguya_manga_subscribers;
+DROP TABLE IF EXISTS public.kaguya_manga_source;
+DROP TABLE IF EXISTS public.kaguya_images;
+DROP TABLE IF EXISTS public.kaguya_hostings;
+DROP TABLE IF EXISTS public.kaguya_episodes;
+DROP TABLE IF EXISTS public.kaguya_dmca;
+DROP TABLE IF EXISTS public.kaguya_chapters;
+DROP TABLE IF EXISTS public.kaguya_anime_subscribers;
+DROP TABLE IF EXISTS public.kaguya_anime_source;
+DROP FUNCTION IF EXISTS public.updated_at();
+DROP FUNCTION IF EXISTS public.update_notifcation_users();
+DROP FUNCTION IF EXISTS public.random_between(low integer, high integer);
+DROP FUNCTION IF EXISTS public.pgrst_watch();
+DROP FUNCTION IF EXISTS public.notify_reacted_users();
+DROP FUNCTION IF EXISTS public.notify_mentioned_users();
+DROP FUNCTION IF EXISTS public.handle_new_user();
+DROP FUNCTION IF EXISTS public.generate_create_table_statement(p_table_name character varying);
+DROP FUNCTION IF EXISTS public.arr2text(ci text[]);
 
 --
 -- Name: arr2text(text[]); Type: FUNCTION; Schema: public; Owner: supabase_admin
@@ -794,7 +1011,8 @@ CREATE TABLE public.kaguya_read_status (
     created_at timestamp with time zone DEFAULT now(),
     status character varying,
     "mediaId" bigint NOT NULL,
-    "userId" uuid NOT NULL
+    "userId" uuid NOT NULL,
+    updated_at timestamp without time zone DEFAULT now()
 );
 
 
@@ -950,7 +1168,8 @@ CREATE TABLE public.kaguya_watch_status (
     created_at timestamp with time zone DEFAULT now(),
     status character varying,
     "mediaId" bigint NOT NULL,
-    "userId" uuid NOT NULL
+    "userId" uuid NOT NULL,
+    updated_at timestamp without time zone DEFAULT now()
 );
 
 
@@ -1577,10 +1796,31 @@ CREATE TRIGGER update_updatedat_kaguya_chapters BEFORE UPDATE ON public.kaguya_c
 
 
 --
+-- Name: kaguya_dmca update_updatedat_kaguya_dmca; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_dmca BEFORE UPDATE ON public.kaguya_dmca FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
 -- Name: kaguya_episodes update_updatedat_kaguya_episodes; Type: TRIGGER; Schema: public; Owner: supabase_admin
 --
 
 CREATE TRIGGER update_updatedat_kaguya_episodes BEFORE UPDATE ON public.kaguya_episodes FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_hostings update_updatedat_kaguya_hostings; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_hostings BEFORE UPDATE ON public.kaguya_hostings FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_images update_updatedat_kaguya_images; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_images BEFORE UPDATE ON public.kaguya_images FOR EACH ROW EXECUTE FUNCTION public.updated_at();
 
 
 --
@@ -1591,10 +1831,45 @@ CREATE TRIGGER update_updatedat_kaguya_manga_source BEFORE UPDATE ON public.kagu
 
 
 --
+-- Name: kaguya_notification_users update_updatedat_kaguya_notification_users; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_notification_users BEFORE UPDATE ON public.kaguya_notification_users FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_notifications update_updatedat_kaguya_notifications; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_notifications BEFORE UPDATE ON public.kaguya_notifications FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
 -- Name: kaguya_read update_updatedat_kaguya_read; Type: TRIGGER; Schema: public; Owner: supabase_admin
 --
 
 CREATE TRIGGER update_updatedat_kaguya_read BEFORE UPDATE ON public.kaguya_read FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_read_status update_updatedat_kaguya_read_status; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_read_status BEFORE UPDATE ON public.kaguya_read_status FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_room_users update_updatedat_kaguya_room_users; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_room_users BEFORE UPDATE ON public.kaguya_room_users FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_rooms update_updatedat_kaguya_rooms; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_rooms BEFORE UPDATE ON public.kaguya_rooms FOR EACH ROW EXECUTE FUNCTION public.updated_at();
 
 
 --
@@ -1609,6 +1884,27 @@ CREATE TRIGGER update_updatedat_kaguya_sources BEFORE UPDATE ON public.kaguya_so
 --
 
 CREATE TRIGGER update_updatedat_kaguya_subscriptions BEFORE UPDATE ON public.kaguya_subscriptions FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_translations update_updatedat_kaguya_translations; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_translations BEFORE UPDATE ON public.kaguya_translations FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_videos update_updatedat_kaguya_videos; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_videos BEFORE UPDATE ON public.kaguya_videos FOR EACH ROW EXECUTE FUNCTION public.updated_at();
+
+
+--
+-- Name: kaguya_watch_status update_updatedat_kaguya_watch_status; Type: TRIGGER; Schema: public; Owner: supabase_admin
+--
+
+CREATE TRIGGER update_updatedat_kaguya_watch_status BEFORE UPDATE ON public.kaguya_watch_status FOR EACH ROW EXECUTE FUNCTION public.updated_at();
 
 
 --
