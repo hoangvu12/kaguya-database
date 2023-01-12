@@ -730,7 +730,8 @@ CREATE TABLE public.kaguya_watched (
     "userId" uuid NOT NULL,
     "mediaId" bigint NOT NULL,
     "watchedTime" real,
-    "episodeId" character varying NOT NULL
+    "episodeId" character varying NOT NULL,
+    "episodeNumber" bigint NOT NULL
 );
 
 
